@@ -28,10 +28,12 @@ class ArmaniDeSpider(CrawlSpider):
 
     allowed_domains = ["www.armani.com"]
     start_urls = ["https://www.armani.com/de-de/"]
+
     # start_urls = ["https://www.armani.com/de-de/hose-aus-wollfresko-mit-naturlicher-elastizitat-und-tropenmuster_cod1647597330518760.html"]\
     # start_urls = ["https://www.armani.com/de-de/emporio-armani/damen/highlights/fruhjahr-sommer-kollektion-2024"]
 
     # start_urls = ["https://www.armani.com/de-de/mokassins-aus-leder-mit-hirschprint_cod1647597330535429.html"]
+    # start_urls = ["https://www.armani.com/de-de/eau-de-parfum-my-way-50-ml_cod38063312420499804.html"]
     rules = (
         Rule(LinkExtractor(allow=r'\d+\.html$'), callback="parse_item", follow=True),
         Rule(LinkExtractor(allow=r'/de-de/'), callback="parse_pages", follow=True),

@@ -90,7 +90,7 @@ async def run(playwright: Playwright):
     if(color_containers):
         for i, color_container in enumerate(color_containers):
             await color_container.click(force=True)
-            size_containers = await page.query_selector_all('//li[not(contains(@class, "is-disabled"))]//label[contains(@class, "sizeInfo")]')
+            size_containers = await page.query_selector_all('//li[contains(@class, "is-disabled")]//label[contains(@class, "sizeInfo")]')
             if(size_containers):
                 for size_container in size_containers:
                     await size_container.click(force=True)

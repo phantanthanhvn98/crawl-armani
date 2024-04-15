@@ -15,7 +15,9 @@ from scrapy.http import HtmlResponse, Response
 from playwright.async_api import async_playwright
 
 from .utils import ends_with_number_html, write_page, remove_spaces
+from playwright.async_api import expect
 
+expect.set_options(timeout=10_000)
 
 class ArmaniSpiderMiddleware:
     # Not all methods need to be defined. If a method is not defined,
@@ -83,13 +85,13 @@ class ArmaniDeDownloaderMiddleware:
             browser = await chromium.launch(headless=True)
             context = await browser.new_context(ignore_https_errors=True)
             ua = """Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"""
+            # ua = """Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.132 Safari/537.36"""
             page = await browser.new_page(user_agent=ua)
-            page.set_default_timeout(60000)
+            page.set_default_timeout(180000)
             await page.goto(request.url)
             if(ends_with_number_html(request.url)):
                 print(f'********** Its product page: {request.url}')
                 result = await self.click_colors_sizes(page)
-                # print(len(result), result)
                 page_content = str(result)
             else:
                 print(f'********** Its not a product page: {request.url}')
@@ -108,18 +110,48 @@ class ArmaniDeDownloaderMiddleware:
         data = []
         await page.locator("#footer_tc_privacy_button_3").click()
         color_containers = await page.query_selector_all('.colorInfo') #colorInfo
-        if(color_containers):
-            for i, color_container in enumerate(color_containers):
-                await color_container.click(force=True)
-                size_containers = await page.query_selector_all('//li[not(contains(@class, "is-disabled"))]//label[contains(@class, "sizeInfo")]')
-                if(size_containers):
+        size_containers = await page.query_selector_all('//li[not(contains(@class, "is-disabled"))]//label[contains(@class, "sizeInfo")]')
+        if(color_containers and size_containers):
+            for color_container in color_containers:
+                size_containers = await page.query_selector_all('//li//label[contains(@class, "sizeInfo")]')
+                if(await color_container.is_visible()):
+                    await color_container.click(force=True)
+                    if(size_containers):
+                        for size_container in size_containers:
+                            if(await size_container.is_visible()):
+                                await size_container.click(force=True)
+                                data.append(await self.extract(page, color_container, size_container))
+                elif(size_containers):
                     for size_container in size_containers:
-                        await size_container.click(force=True)
-                        data.append(await self.extract(page, color_container, size_container))
-        else:
+                        if(await size_container.is_visible()):
+                            await size_container.click(force=True)
+                            data.append(await self.extract(page, None, size_container))
+        elif(color_containers and not size_containers):
+            for color_container in color_containers:
+                if(await color_container.is_visible()):
+                    await color_container.click(force=True)
+                    data.append(await self.extract(page, color_container, None))
+        elif(not color_containers and size_containers):
+            for size_container in size_containers:
+                if(await size_container.is_visible()):
+                    await size_container.click(force=True)
+                    data.append(await self.extract(page, None, size_container))
+        size_containers = await page.query_selector_all('#makeupColorsContent li a div.label')
+        size_url = await page.evaluate_handle('''() => {
+            const links = Array.from(document.querySelectorAll('#makeupColorsContent li a'));
+            return links.map(link => link.getAttribute('href'));
+        }''')
+        size_url = await size_url.json_value() if size_url else None
+        if(size_containers):
+            size_container = await page.query_selector('#makeupColorsContent li div div.label')
+            data.append(await self.extract(page, None, size_container))
+            for i, size_container in enumerate(size_containers):
+                if(await size_container.is_visible()):
+                    await size_container.click(force=True)
+                    await page.wait_for_url(f'**/{size_url[i].split("/")[-1]}')
+                    data.append(await self.extract(page, None, size_container))
+        elif(len(data) < 1):
             data.append(await self.extract(page, None, None))
-        # for product in data:
-        #     for key in product.keys():
 
         return data
 
@@ -129,18 +161,18 @@ class ArmaniDeDownloaderMiddleware:
 
         #code
         code = await page.query_selector('//div[contains(@class, "item-shop-panel__modelfabricolor")]//p//span[contains(@class, "value")]')
-        code = await code.inner_html()
+        code = await code.inner_html() if code is not None else ""
         print("code: ", code)
 
         #name 
         name = await page.query_selector('.item-shop-panel__name')
-        name = await name.inner_html()
+        name = await name.inner_html() if name is not None else ""
         name = name.replace("\n", "").replace("\t", "").replace(" ", "")
         print("name: ", name)
 
         #description
         description = await page.query_selector('//div[contains(@class, "item-shop-panel__description")]//p//span[contains(@class, "value")]')
-        description = await description.inner_html()
+        description = await description.inner_html() if description is not None else ""
         print("description: ", description)
 
         #image_urls
@@ -148,7 +180,7 @@ class ArmaniDeDownloaderMiddleware:
             const images = document.querySelectorAll('ul.swiper-wrapper li div.image img');
             return Array.from(images).map(img => img.src);
         }''')
-        image_urls = image_urls[int(len(image_urls)/2):]
+        image_urls = ",".join(image_urls[int(len(image_urls)/2):]) if image_urls is not None else ""
         print("image_urls: ", image_urls)
 
         #detail, attributes

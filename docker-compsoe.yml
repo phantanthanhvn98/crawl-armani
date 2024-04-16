@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  armanide:
+    build: .
+    command:
+    - scrapy 
+    - crawl 
+    - armanide 
+    - -o 
+    - armanide.csv
+    volumes:
+      - ./:/usr/src/app
+  armaniturkiye:
+    build: .
+    command:
+    - scrapy 
+    - crawl 
+    - armaniturkiye 
+    - -o 
+    - armaniturkiye.csv
+    volumes:
+      - ./:/usr/src/app

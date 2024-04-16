@@ -85,7 +85,9 @@ async def run(playwright: Playwright):
     page = await browser.new_page(user_agent=ua)
     page.set_default_timeout(60000)
     await page.goto("https://www.armani.com/de-de/mokassins-aus-leder-mit-hirschprint_cod1647597330535429.html")
-    await page.locator("#footer_tc_privacy_button_3").click()
+    cookie = page.locator("#footer_tc_privacy_button_3")
+    if(await cookie.is_visible()):
+        await cookie.click(force=True)
     color_containers = await page.query_selector_all('.colorInfo') #colorInfo
     if(color_containers):
         for i, color_container in enumerate(color_containers):

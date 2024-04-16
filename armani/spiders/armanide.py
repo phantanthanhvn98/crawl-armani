@@ -59,8 +59,6 @@ class ArmaniDeSpider(CrawlSpider):
 
     def parse_item(self, response):
         LOGGER.info(f'call back parse_item: {response.url}')
-        LOGGER.info("******************************************")
-        LOGGER.info(f'new items: ********************** :{response.body.decode("utf-8")}')
         data = ast.literal_eval(response.body.decode("utf-8"))
         for item in data:
             product = ItemLoader(item=ArmaniItem())

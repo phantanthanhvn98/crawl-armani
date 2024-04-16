@@ -1,3 +1,6 @@
+import ast
+from collections import defaultdict
+
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 from scrapy.loader import ItemLoader
@@ -26,4 +29,20 @@ class ArmaniTurkiyeSpider(CrawlSpider):
 
 
     def parse_item(self, response):
-        pass
+        data = ast.literal_eval(response.body.decode("utf-8"))
+
+        merged_data = defaultdict(lambda: {"image_urls": [], "price": None})
+
+        for item in data:
+            url = item["url"]
+            merged_data[url]["image_urls"].extend(item["image_urls"].split(","))
+            if merged_data[url]["price"] is None:
+                merged_data[url]["price"] = item["price"]
+
+        final_result = [{"url": url, "image_urls": "#".join(info["image_urls"]), "price": info["price"]} for url, info in merged_data.items()]
+
+        for item in final_result:
+            product = ItemLoader(item=ArmaniItem())
+            for key in item.keys():
+                product.add_value(key, item[key])
+            yield product.load_item()

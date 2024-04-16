@@ -160,9 +160,9 @@ class ArmaniDeDownloaderMiddleware:
         url = page.url
 
         #code
-        code = await page.query_selector('//div[contains(@class, "item-shop-panel__modelfabricolor")]//p//span[contains(@class, "value")]')
-        code = await code.inner_html() if code is not None else ""
-        print("code: ", code)
+        sku = await page.query_selector('//div[contains(@class, "item-shop-panel__modelfabricolor")]//p//span[contains(@class, "value")]')
+        sku = await code.inner_html() if code is not None else ""
+        print("code: ", sku)
 
         #name 
         name = await page.query_selector('.item-shop-panel__name')
@@ -233,7 +233,7 @@ class ArmaniDeDownloaderMiddleware:
         size = remove_spaces(size)
         print("size: ", size)
         return {
-            "code": code,
+            "sku": sku,
             "url": url,
             "name": name,
             "description": description,
@@ -282,7 +282,7 @@ class ArmaniTurkiyeDownloaderMiddleware:
         crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
         return s
 
-    def process_request(self, request, spider):
+    async def process_request(self, request, spider):
         # Called for each request that goes through the downloader
         # middleware.
 
@@ -292,7 +292,191 @@ class ArmaniTurkiyeDownloaderMiddleware:
         # - or return a Request object
         # - or raise IgnoreRequest: process_exception() methods of
         #   installed downloader middleware will be called
-        return None
+        print(f'process url: {request.url}')
+        async with async_playwright() as playwright:
+            chromium = playwright.firefox # or "firefox" or "webkit".
+            browser = await chromium.launch(headless=True)
+            await browser.new_context(ignore_https_errors=True)
+            ua = """Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"""
+            # ua = """Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.132 Safari/537.36"""
+            page = await browser.new_page(user_agent=ua)
+            page.set_default_timeout(1800000)
+            await page.goto(request.url, timeout=1800000)
+            if(ends_with_number_html(request.url)):
+                print(f'********** Its product page: {request.url}')
+                result = await self.click_colors_sizes(page)
+                page_content = str(result)
+            else:
+                print(f'********** Its not a product page: {request.url}')
+                page = await self.infinity_scroll(page)
+                page_content = await page.content()
+
+            # other actions...
+            await browser.close()
+        return HtmlResponse(
+            request.url,
+            body= page_content.encode('utf-8'),
+            encoding='utf-8',
+            request=request
+        )
+
+    async def click_colors_sizes(self, page):
+        data = []
+        cookie = page.locator("#footer_tc_privacy_button_3")
+        if(await cookie.is_visible()):
+            await cookie.click(force=True)
+
+        color_containers = await page.query_selector_all('#hsPXWUmG1W') 
+        size_containers = await page.query_selector_all('ul.list_attribute li span')
+        if(color_containers and size_containers):
+            for color_container in color_containers:
+                size_containers = await page.query_selector_all('ul.list_attribute li span')
+                if(await color_container.is_visible()):
+                    await color_container.click(force=True)
+                    if(size_containers):
+                        for size_container in size_containers:
+                            if(await size_container.is_visible()):
+                                await size_container.click(force=True)
+                                data.append(await self.extract(page, color_container, size_container))
+                elif(size_containers):
+                    for size_container in size_containers:
+                        if(await size_container.is_visible()):
+                            await size_container.click(force=True)
+                            data.append(await self.extract(page, None, size_container))
+        elif(color_containers and not size_containers):
+            for color_container in color_containers:
+                if(await color_container.is_visible()):
+                    await color_container.click(force=True)
+                    data.append(await self.extract(page, color_container, None))
+        elif(not color_containers and size_containers):
+            for size_container in size_containers:
+                if(await size_container.is_visible()):
+                    await size_container.click(force=True)
+                    data.append(await self.extract(page, None, size_container))
+        # size_containers = await page.query_selector_all('#makeupColorsContent li a div.label')
+        # size_url = await page.evaluate_handle('''() => {
+        #     const links = Array.from(document.querySelectorAll('#makeupColorsContent li a'));
+        #     return links.map(link => link.getAttribute('href'));
+        # }''')
+        # size_url = await size_url.json_value() if size_url else None
+        # if(size_containers):
+        #     size_container = await page.query_selector('#makeupColorsContent li div div.label')
+        #     data.append(await self.extract(page, None, size_container))
+        #     for i, size_container in enumerate(size_containers):
+        #         if(await size_container.is_visible()):
+        #             await size_container.click(force=True)
+        #             await page.wait_for_url(f'**/{size_url[i].split("/")[-1]}')
+        #             data.append(await self.extract(page, None, size_container))
+        if(len(data) < 1):
+            data.append(await self.extract(page, None, None))
+
+        return data
+
+    async def infinity_scroll(self, page):
+        previous_height = await page.evaluate('document.body.scrollHeight')
+        while True:
+            await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+            await page.waitForLoadState('networkidle')
+            current_height = await page.evaluate('document.body.scrollHeight')
+            if current_height == previous_height:
+                break
+            previous_height = current_height
+        return page
+
+    async def extract(self, page, color_container, size_container):
+        #url
+        url = page.url
+
+        #code
+        sku = await page.query_selector('//div[contains(@class, "products_model")]')
+        sku = await sku.inner_html() if sku is not None else "" 
+        print("sku: ", sku)
+
+        #name 
+        name = await page.query_selector('#productName')
+        name = await name.inner_html()
+        print("name: ", name)
+
+        #description
+        description = await page.query_selector('#hJTWbtVF5K')
+        description = await description.inner_html()
+        print("description: ", description)
+
+        #image_urls
+        image_urls = await page.evaluate('''() => {
+            const images = document.querySelectorAll('div.slick-track div div img');
+            return [...new Set(Array.from(images).map(img => img.src))]
+        }''')
+        image_urls = ','.join(image_urls) if image_urls is not None else ""
+        print("image_urls: ", image_urls)
+
+        #detail, attributes
+        # (detail, attributes) = await page.evaluate('''() => {
+        #     let details = document.querySelectorAll('div.item-shop-panel__details p');
+        #     detail = details.length > 0 ? details[0].innerText : "";
+        #     const substr = "||";
+        #     const  attributes = document.querySelectorAll('div.item-shop-panel__details p span.value')[0].innerText.replaceAll("&nbsp;", " ");
+        #     return [detail, attributes];
+        # }''')
+        # sub_string = "||"
+        # attributes = attributes.replace("\n", sub_string)
+        # attributes = attributes.replace(": ", "##").replace(":", "##")
+        # attributes = attributes[len(sub_string): ] if (attributes.startswith(sub_string)) else attributes
+        # attributes = html.unescape(attributes[:-len(sub_string)] if (attributes.endswith(sub_string)) else attributes)
+        # print(f'detail: {detail} attributes: {attributes}')
+        (detail, attributes) = ("", "")
+
+        #breadcrumbs
+        breadcrumbs = await page.evaluate('''() => {
+            const breadcrumbs = document.querySelectorAll('div.sUGt28rEGB a');
+            return Array.from(breadcrumbs).map(breadcrumb => breadcrumb.innerText);
+        }''')
+
+        #category
+        category = breadcrumbs[-1] if len(breadcrumbs) > 0 else ""
+        print("category: ", category)
+
+        breadcrumbs = ">".join(breadcrumbs)
+        print("breadcrumbs: ", breadcrumbs)
+        
+        #price
+        price = await page.query_selector('div.productSpecialPrice')
+        price = price.text_content() if price is not None else ""
+        print("price: ", price)
+
+        #brand
+        # brand = await page.evaluate('''() => {
+        #     return document.querySelector('p.item-shop-panel__brand').innerText;
+        # }''')
+        brand = ""
+        print("brand: ", brand)
+
+        #color
+        color = await color_container.query_selector("#JpGrSbiUOF h3") 
+        color = await color.text_content() if size else ""
+        print("color: ", color.replace("\n", "").replace("\t", "").replace(" ", ""))
+
+        #size
+        size = await size_container.text_content()
+        size = await size.text_content() if size else ""
+        print("size: ", size.replace("\n", "").replace("\t", "").replace(" ", ""))
+        
+        return {
+            "sku": sku,
+            "url": url,
+            "name": name,
+            "description": description,
+            "image_urls": image_urls,
+            "details": detail,
+            "attributes": attributes,
+            "breadcrumbs": breadcrumbs,
+            "category": category,
+            "price": price,
+            "brand": brand,
+            "color": color,
+            "size": size
+        }
+        pass 
 
     def process_response(self, request, response, spider):
         # Called with the response returned from the downloader.

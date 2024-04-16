@@ -22,7 +22,7 @@ class ArmaniItem(scrapy.Item):
         input_processor=MapCompose(remove_tags, clean_data),
         output_processor=TakeFirst()
     )
-    code = scrapy.Field(
+    sku = scrapy.Field(
         input_processor=MapCompose(remove_tags, clean_data),
         output_processor=TakeFirst()
     )

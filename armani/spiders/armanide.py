@@ -64,7 +64,7 @@ class ArmaniDeSpider(CrawlSpider):
                 'image_urls': '#'.join, 
                 'color': '#'.join,
                 'size': '#'.join,
-                "code": "first",
+                "sku": "first",
                 "name": "first",
                 "description": "first",
                 "category": "first",

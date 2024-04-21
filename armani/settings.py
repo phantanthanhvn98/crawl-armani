@@ -94,4 +94,4 @@ REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 
-FEED_EXPORT_FIELDS = ['code', 'name', 'price', 'description', 'url', 'image_urls', 'category', 'brand', 'color', 'size', 'details', 'breadcrumbs', 'attributes']
+FEED_EXPORT_FIELDS = ['sku', 'name', 'price', 'description', 'url', 'image_urls', 'category', 'brand', 'color', 'size', 'details', 'breadcrumbs', 'attributes']

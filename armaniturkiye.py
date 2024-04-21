@@ -8,7 +8,7 @@ async def extract(page, color_container, size_container):
 
     #code
     sku = await page.query_selector('//div[contains(@class, "products_model")]')
-    sku = await code.inner_html() if code is not None else "" 
+    sku = await sku.inner_html() if sku is not None else "" 
     print("sku: ", sku)
 
     #name 

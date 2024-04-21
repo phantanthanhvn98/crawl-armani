@@ -1,20 +1,17 @@
-
 import ast
 import math
-import json
+import pandas as pd
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 from scrapy.loader import ItemLoader
 from scrapy import Request
 
-import logging
 
 from ..items import ArmaniItem
-from ..utils import ends_with_number_html
+from ..utils import ends_with_number_html, extract_number_from_string
 
 PAGE_SIZE = 36
 
-LOGGER = logging.getLogger("armanide")
 
 class ArmaniDeSpider(CrawlSpider):
     name = "armanide"
@@ -28,12 +25,7 @@ class ArmaniDeSpider(CrawlSpider):
 
     allowed_domains = ["www.armani.com"]
     start_urls = ["https://www.armani.com/de-de/"]
-
-    # start_urls = ["https://www.armani.com/de-de/hose-aus-wollfresko-mit-naturlicher-elastizitat-und-tropenmuster_cod1647597330518760.html"]\
-    # start_urls = ["https://www.armani.com/de-de/emporio-armani/damen/highlights/fruhjahr-sommer-kollektion-2024"]
-
-    # start_urls = ["https://www.armani.com/de-de/mokassins-aus-leder-mit-hirschprint_cod1647597330535429.html"]
-    # start_urls = ["https://www.armani.com/de-de/eau-de-parfum-my-way-50-ml_cod38063312420499804.html"]
+    
     rules = (
         Rule(LinkExtractor(allow=r'\d+\.html$'), callback="parse_item", follow=True),
         Rule(LinkExtractor(allow=r'/de-de/'), callback="parse_pages", follow=True),
@@ -59,8 +51,40 @@ class ArmaniDeSpider(CrawlSpider):
 
     def parse_item(self, response):
         LOGGER.info(f'call back parse_item: {response.url}')
-        data = ast.literal_eval(response.body.decode("utf-8"))
-        for item in data:
+        df = pd.DataFrame(ast.literal_eval(response.body.decode("utf-8")))
+        df = df[df['url'] != 'url']
+        df['price'] = df['price'].astype(str)
+        df['size'] = df['size'].astype(str).apply(lambda x: extract_number_from_string(x))
+        df['color'] = df['color'].astype(str)
+        df['image_urls'] = df['image_urls'].apply(lambda x: ','.join([item for item in x.split(',') if not item.endswith('.html')]))
+        df['category'] = df['breadcrumbs'].apply(lambda x: x.split(">")[-1])
+        grouped_df = df.groupby('url').agg(
+            {
+                'price': '#'.join, 
+                'image_urls': '#'.join, 
+                'color': '#'.join,
+                'size': '#'.join,
+                "code": "first",
+                "name": "first",
+                "description": "first",
+                "category": "first",
+                "brand": "first",
+                "details": "first",
+                "breadcrumbs": "first",
+                "attributes": "first"
+            }
+        ).reset_index()
+
+        grouped_df['image_urls'] = grouped_df['image_urls'].apply(lambda x: x.split('#')[0] if len(set(x.split('#'))) == 1 else x)
+
+        grouped_df['price'] = grouped_df['price'].apply(lambda x: x.split('#')[0] if len(set(x.split('#'))) == 1 else x)
+
+        grouped_df['size'] = grouped_df['size'].apply(lambda x: '#'.join(set(x.split("#"))))
+        grouped_df['color'] = grouped_df['color'].apply(lambda x: "#".join(set(x.replace('FürdieausgewählteGrößeistdieFarbenichterhältlich', '').split("#"))))
+        grouped_df['breadcrumbs'] = grouped_df['breadcrumbs'].apply(lambda x: ">".join(x.split(">")[:-2]))
+        grouped_df['category '] = grouped_df['breadcrumbs'].apply(lambda x: x.split(">")[-1])
+        grouped_df['size'] = grouped_df['size'].apply(lambda x: '#'.join(set([ extract_number_from_string(value) for value in x.split("#")])))
+        for item in grouped_df.to_dict('records'):
             product = ItemLoader(item=ArmaniItem())
             for key in item.keys():
                 product.add_value(key, item[key])

@@ -295,20 +295,34 @@ class ArmaniTurkiyeDownloaderMiddleware:
         print(f'process url: {request.url}')
         async with async_playwright() as playwright:
             chromium = playwright.firefox # or "firefox" or "webkit".
-            browser = await chromium.launch(headless=True)
+            browser = await chromium.launch(
+                headless=False,
+                proxy={
+                    'server': '185.198.61.66:16840',
+                },
+                firefox_user_prefs  = {
+                    'security.enterprise_roots.enabled': True
+                }
+            )
             await browser.new_context(ignore_https_errors=True)
             ua = """Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"""
             # ua = """Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.132 Safari/537.36"""
             page = await browser.new_page(user_agent=ua)
+            await page.set_extra_http_headers({'Remote-Address': '185.198.61.66:16840'})
             page.set_default_timeout(1800000)
             await page.goto(request.url, timeout=1800000)
-            if(ends_with_number_html(request.url)):
+            if "/products/" in request.url:
                 print(f'********** Its product page: {request.url}')
+                # write_page("test.html", await page.content())
                 result = await self.click_colors_sizes(page)
                 page_content = str(result)
+            elif( '/collections/'):
+                print(f'********** Its collections  page: {request.url}')
+                page = await self.infinity_scroll(page)
+                page_content = await page.content()
             else:
                 print(f'********** Its not a product page: {request.url}')
-                page = await self.infinity_scroll(page)
+                # page = await self.infinity_scroll(page)
                 page_content = await page.content()
 
             # other actions...
@@ -353,6 +367,8 @@ class ArmaniTurkiyeDownloaderMiddleware:
                 if(await size_container.is_visible()):
                     await size_container.click(force=True)
                     data.append(await self.extract(page, None, size_container))
+        else:
+            data.append(await self.extract(page, None, None))
         # size_containers = await page.query_selector_all('#makeupColorsContent li a div.label')
         # size_url = await page.evaluate_handle('''() => {
         #     const links = Array.from(document.querySelectorAll('#makeupColorsContent li a'));
@@ -374,10 +390,13 @@ class ArmaniTurkiyeDownloaderMiddleware:
 
     async def infinity_scroll(self, page):
         previous_height = await page.evaluate('document.body.scrollHeight')
+        print("previous_height: ", previous_height)
         while True:
             await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-            await page.waitForLoadState('networkidle')
+            await page.wait_for_timeout(180000)
+            await page.wait_for_load_state('networkidle')
             current_height = await page.evaluate('document.body.scrollHeight')
+            print("current_height: ", current_height)
             if current_height == previous_height:
                 break
             previous_height = current_height
@@ -386,26 +405,32 @@ class ArmaniTurkiyeDownloaderMiddleware:
     async def extract(self, page, color_container, size_container):
         #url
         url = page.url
+        print("url: ", url)
 
         #code
-        sku = await page.query_selector('//div[contains(@class, "products_model")]')
+        sku = await page.query_selector('div.products_model')
         sku = await sku.inner_html() if sku is not None else "" 
-        print("sku: ", sku)
 
         #name 
         name = await page.query_selector('#productName')
-        name = await name.inner_html()
+        name = await name.inner_html() if name is not None else "" 
         print("name: ", name)
+
+        if(not sku and name):
+            sku = name.split(" | ")[-1]
+        else:
+            sku = ''.join(sku.split("Style:"))
+        print("sku: ", sku)
 
         #description
         description = await page.query_selector('#hJTWbtVF5K')
-        description = await description.inner_html()
+        description = await description.inner_html() if description else ""
         print("description: ", description)
 
         #image_urls
         image_urls = await page.evaluate('''() => {
             const images = document.querySelectorAll('div.slick-track div div img');
-            return [...new Set(Array.from(images).map(img => img.src))]
+            return [...new Set(Array.from(images).filter((item) => item.src.includes("ZOOM")).map(img => img.src))]
         }''')
         image_urls = ','.join(image_urls) if image_urls is not None else ""
         print("image_urls: ", image_urls)
@@ -440,15 +465,15 @@ class ArmaniTurkiyeDownloaderMiddleware:
         print("breadcrumbs: ", breadcrumbs)
         
         #price
-        price = await page.query_selector('div.productSpecialPrice')
-        price = price.text_content() if price is not None else ""
+        price = await page.query_selector('span.productSpecialPrice')
+        price = await price.text_content() if price is not None else ""
         print("price: ", price)
 
         #brand
         # brand = await page.evaluate('''() => {
         #     return document.querySelector('p.item-shop-panel__brand').innerText;
         # }''')
-        brand = ""
+        brand = "Armani"
         print("brand: ", brand)
 
         #color

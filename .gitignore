@@ -1,4 +1,6 @@
-/armani-env
-/myenv
-/__pycahe__
-*.csv
+armani-env/
+myenv/
+myvenv/
+*.pyc
+__pycahe__/
+file_2.log

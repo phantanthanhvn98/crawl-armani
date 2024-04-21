@@ -64,7 +64,7 @@ class ArmaniTurkiyeSpider(CrawlSpider):
         grouped_df['size'] = grouped_df['size'].apply(lambda x: '#'.join(set(x.split("#"))))
         grouped_df['color'] = grouped_df['color'].apply(lambda x: "#".join(set(x.replace('FürdieausgewählteGrößeistdieFarbenichterhältlich', '').split("#"))))
         grouped_df['breadcrumbs'] = grouped_df['breadcrumbs'].apply(lambda x: ">".join(x.split(">")[:-2]))
-        grouped_df['category '] = grouped_df['breadcrumbs'].apply(lambda x: x.split(">")[-1])
+        grouped_df['category'] = grouped_df['breadcrumbs'].apply(lambda x: x.split(">")[-1])
         grouped_df['size'] = grouped_df['size'].apply(lambda x: '#'.join(set([ extract_number_from_string(value) for value in x.split("#")])))
         for item in grouped_df.to_dict('records'):
             product = ItemLoader(item=ArmaniItem())

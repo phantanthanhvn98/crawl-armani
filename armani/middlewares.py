@@ -91,7 +91,7 @@ class ArmaniDeDownloaderMiddleware:
             await page.goto(request.url)
             if(ends_with_number_html(request.url)):
                 print(f'********** Its product page: {request.url}')
-                result = await self.click_colors_sizes(page)
+                result = await self.extract(page)
                 page_content = str(result)
             else:
                 print(f'********** Its not a product page: {request.url}')
@@ -105,64 +105,18 @@ class ArmaniDeDownloaderMiddleware:
             encoding='utf-8',
             request=request
         )
-
-    async def click_colors_sizes(self, page):
-        data = []
-        await page.locator("#footer_tc_privacy_button_3").click()
-        color_containers = await page.query_selector_all('.colorInfo') #colorInfo
-        size_containers = await page.query_selector_all('//li[not(contains(@class, "is-disabled"))]//label[contains(@class, "sizeInfo")]')
-        if(color_containers and size_containers):
-            for color_container in color_containers:
-                size_containers = await page.query_selector_all('//li//label[contains(@class, "sizeInfo")]')
-                if(await color_container.is_visible()):
-                    await color_container.click(force=True)
-                    if(size_containers):
-                        for size_container in size_containers:
-                            if(await size_container.is_visible()):
-                                await size_container.click(force=True)
-                                data.append(await self.extract(page, color_container, size_container))
-                elif(size_containers):
-                    for size_container in size_containers:
-                        if(await size_container.is_visible()):
-                            await size_container.click(force=True)
-                            data.append(await self.extract(page, None, size_container))
-        elif(color_containers and not size_containers):
-            for color_container in color_containers:
-                if(await color_container.is_visible()):
-                    await color_container.click(force=True)
-                    data.append(await self.extract(page, color_container, None))
-        elif(not color_containers and size_containers):
-            for size_container in size_containers:
-                if(await size_container.is_visible()):
-                    await size_container.click(force=True)
-                    data.append(await self.extract(page, None, size_container))
-        size_containers = await page.query_selector_all('#makeupColorsContent li a div.label')
-        size_url = await page.evaluate_handle('''() => {
-            const links = Array.from(document.querySelectorAll('#makeupColorsContent li a'));
-            return links.map(link => link.getAttribute('href'));
-        }''')
-        size_url = await size_url.json_value() if size_url else None
-        if(size_containers):
-            size_container = await page.query_selector('#makeupColorsContent li div div.label')
-            data.append(await self.extract(page, None, size_container))
-            for i, size_container in enumerate(size_containers):
-                if(await size_container.is_visible()):
-                    await size_container.click(force=True)
-                    await page.wait_for_url(f'**/{size_url[i].split("/")[-1]}')
-                    data.append(await self.extract(page, None, size_container))
-        elif(len(data) < 1):
-            data.append(await self.extract(page, None, None))
-
-        return data
-
-    async def extract(self, page, color_container, size_container):
+    
+    async def extract(self, page):
          #url
         url = page.url
+        print('url: ', url)
+
+        sku = url.split('.html')[0].split('cod')[-1]
 
         #code
-        sku = await page.query_selector('//div[contains(@class, "item-shop-panel__modelfabricolor")]//p//span[contains(@class, "value")]')
-        sku = await code.inner_html() if code is not None else ""
-        print("code: ", sku)
+        mpn = await page.query_selector('//div[contains(@class, "item-shop-panel__modelfabricolor")]//p//span[contains(@class, "value")]')
+        mpn = await mpn.inner_html() if mpn is not None else ""
+        print("code: ", mpn)
 
         #name 
         name = await page.query_selector('.item-shop-panel__name')
@@ -224,16 +178,21 @@ class ArmaniDeDownloaderMiddleware:
         print("brand: ", brand)
 
         #color
-        color =  "" if color_container is None else await color_container.text_content()
-        color = remove_spaces(color)
+        color = await page.evaluate('''() => {
+            return document.querySelector("label[for=colorSelection-1647597337235125_1647597337235125]").innerText
+        }''')
         print("color: ", color)
 
         #size
-        size = "" if size_container is None else await size_container.text_content()
-        size = remove_spaces(size)
-        print("size: ", size)
+        sizes = await page.evaluate('''() => {
+            return Array.from(document.querySelectorAll("label[class=sizeInfo]")).map((item) => item.innerText)
+        }''')
+        sizes  = '#'.join(sizes) if sizes else ''
+        print("size: ", sizes)
+
         return {
-            "sku": sku,
+            'sku': sku,
+            "mpn ": mpn ,
             "url": url,
             "name": name,
             "description": description,
@@ -245,7 +204,7 @@ class ArmaniDeDownloaderMiddleware:
             "price": price,
             "brand": brand,
             "color": color,
-            "size": size
+            "size": sizes
         }
 
     def process_response(self, request, response, spider):
@@ -306,15 +265,13 @@ class ArmaniTurkiyeDownloaderMiddleware:
             )
             await browser.new_context(ignore_https_errors=True)
             ua = """Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"""
-            # ua = """Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.132 Safari/537.36"""
             page = await browser.new_page(user_agent=ua)
             await page.set_extra_http_headers({'Remote-Address': '185.198.61.66:16840'})
             page.set_default_timeout(1800000)
             await page.goto(request.url, timeout=1800000)
             if "/products/" in request.url:
                 print(f'********** Its product page: {request.url}')
-                # write_page("test.html", await page.content())
-                result = await self.click_colors_sizes(page)
+                result = await self.extract(page)
                 page_content = str(result)
             elif( '/collections/'):
                 print(f'********** Its collections  page: {request.url}')
@@ -334,60 +291,6 @@ class ArmaniTurkiyeDownloaderMiddleware:
             request=request
         )
 
-    async def click_colors_sizes(self, page):
-        data = []
-        cookie = page.locator("#footer_tc_privacy_button_3")
-        if(await cookie.is_visible()):
-            await cookie.click(force=True)
-
-        color_containers = await page.query_selector_all('#hsPXWUmG1W') 
-        size_containers = await page.query_selector_all('ul.list_attribute li span')
-        if(color_containers and size_containers):
-            for color_container in color_containers:
-                size_containers = await page.query_selector_all('ul.list_attribute li span')
-                if(await color_container.is_visible()):
-                    await color_container.click(force=True)
-                    if(size_containers):
-                        for size_container in size_containers:
-                            if(await size_container.is_visible()):
-                                await size_container.click(force=True)
-                                data.append(await self.extract(page, color_container, size_container))
-                elif(size_containers):
-                    for size_container in size_containers:
-                        if(await size_container.is_visible()):
-                            await size_container.click(force=True)
-                            data.append(await self.extract(page, None, size_container))
-        elif(color_containers and not size_containers):
-            for color_container in color_containers:
-                if(await color_container.is_visible()):
-                    await color_container.click(force=True)
-                    data.append(await self.extract(page, color_container, None))
-        elif(not color_containers and size_containers):
-            for size_container in size_containers:
-                if(await size_container.is_visible()):
-                    await size_container.click(force=True)
-                    data.append(await self.extract(page, None, size_container))
-        else:
-            data.append(await self.extract(page, None, None))
-        # size_containers = await page.query_selector_all('#makeupColorsContent li a div.label')
-        # size_url = await page.evaluate_handle('''() => {
-        #     const links = Array.from(document.querySelectorAll('#makeupColorsContent li a'));
-        #     return links.map(link => link.getAttribute('href'));
-        # }''')
-        # size_url = await size_url.json_value() if size_url else None
-        # if(size_containers):
-        #     size_container = await page.query_selector('#makeupColorsContent li div div.label')
-        #     data.append(await self.extract(page, None, size_container))
-        #     for i, size_container in enumerate(size_containers):
-        #         if(await size_container.is_visible()):
-        #             await size_container.click(force=True)
-        #             await page.wait_for_url(f'**/{size_url[i].split("/")[-1]}')
-        #             data.append(await self.extract(page, None, size_container))
-        if(len(data) < 1):
-            data.append(await self.extract(page, None, None))
-
-        return data
-
     async def infinity_scroll(self, page):
         previous_height = await page.evaluate('document.body.scrollHeight')
         print("previous_height: ", previous_height)
@@ -402,7 +305,7 @@ class ArmaniTurkiyeDownloaderMiddleware:
             previous_height = current_height
         return page
 
-    async def extract(self, page, color_container, size_container):
+    async def extract(self, page):
         #url
         url = page.url
         print("url: ", url)
@@ -435,20 +338,6 @@ class ArmaniTurkiyeDownloaderMiddleware:
         image_urls = ','.join(image_urls) if image_urls is not None else ""
         print("image_urls: ", image_urls)
 
-        #detail, attributes
-        # (detail, attributes) = await page.evaluate('''() => {
-        #     let details = document.querySelectorAll('div.item-shop-panel__details p');
-        #     detail = details.length > 0 ? details[0].innerText : "";
-        #     const substr = "||";
-        #     const  attributes = document.querySelectorAll('div.item-shop-panel__details p span.value')[0].innerText.replaceAll("&nbsp;", " ");
-        #     return [detail, attributes];
-        # }''')
-        # sub_string = "||"
-        # attributes = attributes.replace("\n", sub_string)
-        # attributes = attributes.replace(": ", "##").replace(":", "##")
-        # attributes = attributes[len(sub_string): ] if (attributes.startswith(sub_string)) else attributes
-        # attributes = html.unescape(attributes[:-len(sub_string)] if (attributes.endswith(sub_string)) else attributes)
-        # print(f'detail: {detail} attributes: {attributes}')
         (detail, attributes) = ("", "")
 
         #breadcrumbs
@@ -477,13 +366,13 @@ class ArmaniTurkiyeDownloaderMiddleware:
         print("brand: ", brand)
 
         #color
-        color = await color_container.query_selector("#JpGrSbiUOF h3") 
+        color = await page.query_selector("#JpGrSbiUOF h3") 
         color = await color.text_content() if size else ""
         print("color: ", color.replace("\n", "").replace("\t", "").replace(" ", ""))
 
         #size
-        size = await size_container.text_content()
-        size = await size.text_content() if size else ""
+        sizes = await page.query_selector_all('ul.list_attribute li span text')
+        sizes =  '#'.join([await size.text_content() for size in sizes]) if sizes else ''
         print("size: ", size.replace("\n", "").replace("\t", "").replace(" ", ""))
         
         return {
@@ -499,7 +388,7 @@ class ArmaniTurkiyeDownloaderMiddleware:
             "price": price,
             "brand": brand,
             "color": color,
-            "size": size
+            "size": sizes
         }
         pass 
 

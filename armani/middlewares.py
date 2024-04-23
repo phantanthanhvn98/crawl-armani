@@ -191,7 +191,8 @@ class ArmaniDeDownloaderMiddleware:
         print("size: ", sizes)
 
         return {
-            'sku': sku,
+            'sku': url.split('.html')[0].split('cod')[-1],
+            'mpn': sku,
             "mpn ": mpn ,
             "url": url,
             "name": name,
@@ -373,10 +374,11 @@ class ArmaniTurkiyeDownloaderMiddleware:
         #size
         sizes = await page.query_selector_all('ul.list_attribute li span text')
         sizes =  '#'.join([await size.text_content() for size in sizes]) if sizes else ''
-        print("size: ", size.replace("\n", "").replace("\t", "").replace(" ", ""))
+        print("size: ", sizes.replace("\n", "").replace("\t", "").replace(" ", ""))
         
         return {
-            "sku": sku,
+            "sku": url.split('.html')[0].split('p-')[-1],
+            "mpn": sku, 
             "url": url,
             "name": name,
             "description": description,

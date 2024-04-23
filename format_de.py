@@ -5,7 +5,7 @@ import re
 df = pd.read_csv("draft_armanide.csv")
 
 df = df.drop_duplicates(subset='code')
-df = df.rename(columns={'code': 'mnp'})
+df = df.rename(columns={'code': 'mpn'})
 df['size'] = df['size'].astype(str)
 df['color'] = df['color'].astype(str)
 df['name'] = df['name'].astype(str)
@@ -29,6 +29,10 @@ def split_by_capital(text):
     return ' '.join(substrings)  
 
 df = df.apply(lambda x: remove_text(x), axis=1)
-df = df.drop(columns=['attributes'])
+
+orders = ["mpn", "sku", "name", "price", "description", "url", "image_urls", "category", "brand", "color", "size", "details", "breadcrumbs", "attributes"]
+
+df = df[orders]
+df['attributes'] = ''
 
 df.to_csv('final_armanide.csv', index=False)
